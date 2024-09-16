@@ -9,7 +9,6 @@ module.exports = function (homebridge) {
     homebridge.registerAccessory("homebridge-http", "Http", HttpAccessory);
 };
 
-
 function HttpAccessory(log, config) {
     this.log = log;
 
@@ -34,6 +33,13 @@ function HttpAccessory(log, config) {
     this.switchHandling = config["switchHandling"] || "no";
     this.statusPollingInterval = config["statusPollingInterval"] || 300;
 
+    // Additional properties for timer
+    this.states = {
+        LightOn: false,
+        SwitchOn: false
+    };
+    this.timer = null;
+    this.config = config;
 
     //realtime polling info
     this.state = false;
@@ -61,7 +67,7 @@ function HttpAccessory(log, config) {
 
         statusemitter.on("statuspoll", function (responseBody) {
             var binaryState;
-            if (that.status_on && that.status_off) {	//Check if custom status checks are set
+            if (that.status_on && that.status_off) {    //Check if custom status checks are set
                 var customStatusOn = that.status_on;
                 var customStatusOff = that.status_off;
                 var statusOn, statusOff;
@@ -169,6 +175,20 @@ HttpAccessory.prototype = {
                 url = this.on_url;
                 body = this.on_body;
                 this.log("Setting power state to on");
+                
+                // Flip the light bulb state
+                this.states.LightOn = !this.states.LightOn;
+                this.lightbulbService.getCharacteristic(Characteristic.On).updateValue(this.states.LightOn);
+                this.log.debug('Start switch timer');
+                
+                // Set a timer to turn off the switch
+                this.timer = setTimeout(() => {
+                    // Turn off the switch
+                    this.states.SwitchOn = false;
+                    this.switchService.getCharacteristic(Characteristic.On).updateValue(false);
+                    this.log.debug('Switch timer completed, light is now ', this.states.SwitchOn ? 'On' : 'Off');
+                }, this.config.delay || 500);
+
             } else {
                 url = this.off_url;
                 body = this.off_body;
@@ -206,7 +226,7 @@ HttpAccessory.prototype = {
             } else {
                 var binaryState;
                 this.log("Status Config On", this.status_on);
-                if (this.status_on && this.status_off) {	//Check if custom status checks are set
+                if (this.status_on && this.status_off) {    //Check if custom status checks are set
                     var customStatusOn = this.status_on;
                     var customStatusOff = this.status_off;
                     var statusOn, statusOff;
